@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Falcon BMS joystick parser">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#183a5a"/>
+      <stop offset="1" stop-color="#08131f"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="24" fill="url(#sky)"/>
+  <path d="M18 66 54 50 66 20l9 28 35 18-35-5-2 29 14 11H41l14-11-2-29z" fill="#d7e2e8"/>
+  <circle cx="64" cy="69" r="10" fill="#e3a529"/>
+  <path d="M58 69h12M64 63v12" stroke="#08131f" stroke-width="4" stroke-linecap="round"/>
+</svg>
+
