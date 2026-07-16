@@ -15,7 +15,10 @@ class FalconBMSSettings(PluginSettings):
     key_file: Path | None = Field(
         default=None,
         title="Falcon BMS Key File",
-        description="Select a .key file from Falcon BMS User\\Config.",
+        description=(
+            "Select a .key file from Falcon BMS User\\Config. Axis mappings "
+            "are read from Setup.v*.xml files in the same folder."
+        ),
         json_schema_extra={
             "is_folder": False,
             "default_path": r"C:\\Falcon BMS 4.38\\User\\Config",
@@ -27,7 +30,7 @@ class FalconBMSSettings(PluginSettings):
 class ParserPlugin(PluginInterface):
     plugin_meta = PluginMeta(
         name="Falcon BMS",
-        version="0.1.1",
+        version="0.2.0",
         icon_path="img/falcon_bms.svg",
     )
     plugin_settings_model = FalconBMSSettings

@@ -19,6 +19,8 @@ from joystick_diagrams.input.device import Device_
 from joystick_diagrams.input.hat import Hat, HatDirection
 from joystick_diagrams.input.profile_collection import ProfileCollection
 
+from .bms_axis_parser import BMSAxisParser
+
 BUTTONS_PER_DEVICE = 128
 DEVICES_PER_SHIFT_LAYER = 16
 BUTTONS_PER_SHIFT_LAYER = BUTTONS_PER_DEVICE * DEVICES_PER_SHIFT_LAYER
@@ -109,6 +111,15 @@ class BMSKeyParser:
                     else f"BMS DX Shift {binding.layer}"
                 )
                 device.add_modifier_to_input(control, {modifier}, command)
+
+        for binding in BMSAxisParser(self.key_file.parent).parse():
+            device = devices.get(binding.device_name)
+            if device is None:
+                device = profile.add_device(
+                    self.device_guid(binding.device_name), binding.device_name
+                )
+                devices[binding.device_name] = device
+            device.create_input(binding.control, binding.action)
 
         return collection
 

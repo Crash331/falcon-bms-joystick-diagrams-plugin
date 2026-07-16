@@ -1,7 +1,8 @@
 # Falcon BMS parser plugin for Joystick Diagrams
 
-This parser imports Falcon BMS DirectInput button and POV assignments from a
-`.key` file and exposes them as a Joystick Diagrams profile.
+This parser imports Falcon BMS DirectInput button, POV, and analog axis
+assignments from a `.key` file and neighboring Alternative Launcher setup files,
+then exposes them as a Joystick Diagrams profile.
 
 ## Install
 
@@ -22,12 +23,15 @@ This parser imports Falcon BMS DirectInput button and POV assignments from a
 - Press/release pairs, combined on the same physical control.
 - Human-readable action labels from the callback definitions earlier in the
   same key file.
+- Analog axis assignments from Alternative Launcher's per-device
+  `Setup.v*.xml` files, matched to active devices using `DeviceSorting.txt`.
 - Device names from Alternative Launcher hardware section headers. Stable,
   deterministic UUIDs are generated because `.key` files do not contain USB
   device GUIDs.
 
-Keyboard shortcuts and analog axes are intentionally excluded. Falcon BMS does
-not store analog axis assignments in the `.key` file.
+Keyboard shortcuts are intentionally excluded. Falcon BMS does not store analog
+axis assignments in the `.key` file, so the parser reads the adjacent
+Alternative Launcher setup XML files instead.
 
 The button calculation follows Falcon BMS 4.38's 16-device layout (128 buttons
 per device, 2,048 global button IDs per shift layer). BMS stores button IDs
