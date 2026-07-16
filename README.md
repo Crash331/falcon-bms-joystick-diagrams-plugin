@@ -48,3 +48,6 @@ python -m unittest discover -v
 The installable ZIP must contain exactly one top-level directory named
 `falcon_bms_plugin`, matching Joystick Diagrams' plugin installer contract.
 
+## License
+
+This project is licensed under the [GNU General Public License v2.0](LICENSE).
