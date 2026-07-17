@@ -2,8 +2,8 @@
 
 Falcon BMS stores keyboard definitions and DirectInput assignments in the same
 ``.key`` file. DirectInput button rows use ``-2`` as their input type, while
-POV rows use ``-3``. Button IDs are global, zero-based IDs: 128 buttons per
-device and (in current BMS) 16 devices per DX shift layer.
+POV rows use ``-3``. Button IDs are global, zero-based IDs. Their device width
+and DX-shift offset are controlled by Falcon BMS configuration settings.
 """
 
 from __future__ import annotations
@@ -21,9 +21,10 @@ from joystick_diagrams.input.profile_collection import ProfileCollection
 
 from .bms_axis_parser import BMSAxisParser
 
-BUTTONS_PER_DEVICE = 128
-DEVICES_PER_SHIFT_LAYER = 16
-BUTTONS_PER_SHIFT_LAYER = BUTTONS_PER_DEVICE * DEVICES_PER_SHIFT_LAYER
+BUTTON_LAYOUT_AUTO = "Auto"
+BUTTON_LAYOUT_OPTIONS = (BUTTON_LAYOUT_AUTO, "128", "32")
+DEFAULT_BUTTONS_PER_DEVICE = 32
+DEFAULT_SHIFT_MAGNITUDE = 256
 POVS_PER_SHIFT_LAYER = 2
 
 _NUMBER = r"(?:-?\d+|0[xX][0-9a-fA-F]+)"
@@ -42,6 +43,15 @@ _HEADER_RE = re.compile(r"^\s*#\s*=+\s*(?P<title>.*?)\s*=+\s*$")
 _POV_HEADER_SUFFIX_RE = re.compile(
     r"\s*:\s*POV\s*#\s*\d+\s*$", re.IGNORECASE
 )
+_CONFIG_SETTING_RE = re.compile(
+    r"^\s*set\s+"
+    r"(?P<name>g_nButtonsPerDevice|g_nHotasPinkyShiftMagnitude)"
+    r"\s+(?P<value>-?\d+)\b",
+    re.IGNORECASE,
+)
+_DEVICE_SORTING_RE = re.compile(
+    r'^\s*\{[0-9a-f-]+\}\s+"(?P<name>.+)"\s*$', re.IGNORECASE
+)
 
 _POV_DIRECTIONS = {
     0: HatDirection.U,
@@ -52,6 +62,17 @@ _POV_DIRECTIONS = {
     5: HatDirection.DL,
     6: HatDirection.L,
     7: HatDirection.UL,
+}
+
+_POV_DIRECTION_NAMES = {
+    HatDirection.U: "Up",
+    HatDirection.UR: "Up Right",
+    HatDirection.R: "Right",
+    HatDirection.DR: "Down Right",
+    HatDirection.D: "Down",
+    HatDirection.DL: "Down Left",
+    HatDirection.L: "Left",
+    HatDirection.UL: "Up Left",
 }
 
 
@@ -75,8 +96,22 @@ class ParsedBinding:
 class BMSKeyParser:
     """Parser for one Falcon BMS ``.key`` profile."""
 
-    def __init__(self, key_file: Path | str):
+    def __init__(
+        self,
+        key_file: Path | str,
+        *,
+        config_dir: Path | str | None = None,
+        show_dx_button_numbers: bool = False,
+        show_axis_identifiers: bool = False,
+        show_pov_identifiers: bool = False,
+        button_layout: str = BUTTON_LAYOUT_AUTO,
+    ):
         self.key_file = Path(key_file)
+        self.config_dir = Path(config_dir) if config_dir else self.key_file.parent
+        self.show_dx_button_numbers = show_dx_button_numbers
+        self.show_axis_identifiers = show_axis_identifiers
+        self.show_pov_identifiers = show_pov_identifiers
+        self.button_layout = button_layout
 
     def process_profiles(self) -> ProfileCollection:
         bindings = self.parse()
@@ -101,7 +136,7 @@ class BMSKeyParser:
                     continue
                 control = Hat(binding.control_id, binding.direction)
 
-            command = " | ".join(actions)
+            command = self._format_command(binding, " | ".join(actions))
             if binding.layer == 0:
                 device.create_input(control, command)
             else:
@@ -112,20 +147,28 @@ class BMSKeyParser:
                 )
                 device.add_modifier_to_input(control, {modifier}, command)
 
-        for binding in BMSAxisParser(self.key_file.parent).parse():
+        for binding in BMSAxisParser(self.config_dir).parse():
             device = devices.get(binding.device_name)
             if device is None:
                 device = profile.add_device(
                     self.device_guid(binding.device_name), binding.device_name
                 )
                 devices[binding.device_name] = device
-            device.create_input(binding.control, binding.action)
+            action = binding.action
+            if self.show_axis_identifiers:
+                action = self._prefix_identifier(binding.control.identifier, action)
+            device.create_input(binding.control, action)
 
         return collection
 
     def parse(self) -> list[ParsedBinding]:
         lines = self._read_lines()
         labels = self._build_label_catalog(lines)
+        buttons_per_device = self.resolve_buttons_per_device()
+        shift_magnitude = self.resolve_shift_magnitude()
+        configured_device_indices = self._read_device_indices()
+        inferred_device_indices: dict[str, int] = {}
+        used_device_indices = set(configured_device_indices.values())
         bindings: list[ParsedBinding] = []
         current_device: str | None = None
 
@@ -135,7 +178,7 @@ class BMSKeyParser:
                 title = header_match.group("title").strip(" =\t")
                 if title:
                     device_title = _POV_HEADER_SUFFIX_RE.sub("", title).strip()
-                    current_device = re.sub(r"\s+", " ", device_title)
+                    current_device = self._normalise_device_name(device_title)
                 continue
 
             if line.lstrip().startswith("#"):
@@ -163,9 +206,18 @@ class BMSKeyParser:
             event = self._event_name(invocation, event_or_direction, input_type)
 
             if input_type == "-2":
-                physical_device = (
-                    raw_control_id % BUTTONS_PER_SHIFT_LAYER
-                ) // BUTTONS_PER_DEVICE
+                expected_device = self._resolve_device_index(
+                    current_device,
+                    configured_device_indices,
+                    inferred_device_indices,
+                    used_device_indices,
+                )
+                layer, physical_button, physical_device = self._decode_button_id(
+                    raw_control_id,
+                    buttons_per_device,
+                    shift_magnitude,
+                    expected_device,
+                )
                 device_name = current_device or (
                     f"BMS DirectInput Device {physical_device + 1}"
                 )
@@ -173,9 +225,9 @@ class BMSKeyParser:
                     ParsedBinding(
                         device_name=device_name,
                         control_kind="button",
-                        control_id=(raw_control_id % BUTTONS_PER_DEVICE) + 1,
+                        control_id=physical_button + 1,
                         action=action,
-                        layer=raw_control_id // BUTTONS_PER_SHIFT_LAYER,
+                        layer=layer,
                         event=event,
                     )
                 )
@@ -197,6 +249,118 @@ class BMSKeyParser:
 
         return bindings
 
+    def _read_device_indices(self) -> dict[str, int]:
+        """Read the BMS device order used to encode global button IDs."""
+
+        path = self.config_dir / "DeviceSorting.txt"
+        if not path.is_file():
+            return {}
+
+        try:
+            text = path.read_text(encoding="utf-8-sig", errors="replace")
+        except OSError:
+            return {}
+
+        indices: dict[str, int] = {}
+        device_index = 0
+        for line in text.splitlines():
+            match = _DEVICE_SORTING_RE.match(line)
+            if match:
+                name = self._normalise_device_name(match.group("name"))
+                indices.setdefault(name.casefold(), device_index)
+                device_index += 1
+        return indices
+
+    def _resolve_device_index(
+        self,
+        device_name: str | None,
+        configured: dict[str, int],
+        inferred: dict[str, int],
+        used: set[int],
+    ) -> int | None:
+        if not device_name:
+            return None
+
+        key = self._normalise_device_name(device_name).casefold()
+        configured_index = configured.get(key)
+        if configured_index is None:
+            prefix_matches = {
+                index
+                for configured_name, index in configured.items()
+                if configured_name.startswith(key) or key.startswith(configured_name)
+            }
+            if len(prefix_matches) == 1:
+                configured_index = prefix_matches.pop()
+        if configured_index is not None:
+            return configured_index
+
+        if key not in inferred:
+            index = 0
+            while index in used:
+                index += 1
+            inferred[key] = index
+            used.add(index)
+        return inferred[key]
+
+    @staticmethod
+    def _decode_button_id(
+        raw_control_id: int,
+        buttons_per_device: int,
+        shift_magnitude: int,
+        expected_device: int | None,
+    ) -> tuple[int, int, int]:
+        """Return shift layer, zero-based physical button, and device index."""
+
+        if expected_device is not None:
+            device_base = expected_device * buttons_per_device
+            base_button = raw_control_id - device_base
+            if 0 <= base_button < buttons_per_device:
+                return 0, base_button, expected_device
+
+            shifted_button = raw_control_id - device_base - shift_magnitude
+            if shift_magnitude > 0 and 0 <= shifted_button < buttons_per_device:
+                return 1, shifted_button, expected_device
+
+            return 0, raw_control_id % buttons_per_device, expected_device
+
+        if shift_magnitude > 0 and raw_control_id >= shift_magnitude:
+            layer = 1
+            physical_control_id = raw_control_id - shift_magnitude
+        else:
+            layer = 0
+            physical_control_id = raw_control_id
+        return (
+            layer,
+            physical_control_id % buttons_per_device,
+            physical_control_id // buttons_per_device,
+        )
+
+    @staticmethod
+    def _normalise_device_name(device_name: str) -> str:
+        return re.sub(r"\s+", " ", device_name).strip()
+
+    def resolve_buttons_per_device(self) -> int:
+        """Resolve the BMS global button-ID width for each DirectInput device."""
+
+        layout = str(self.button_layout or BUTTON_LAYOUT_AUTO).strip()
+        if layout in {"32", "128"}:
+            return int(layout)
+
+        configured = self._read_input_config().get("g_nbuttonsperdevice")
+        if configured is not None and 32 <= configured <= 128:
+            return configured
+        return DEFAULT_BUTTONS_PER_DEVICE
+
+    def resolve_shift_magnitude(self) -> int:
+        """Resolve the configured offset used by BMS's DX-shift layer."""
+
+        configured = self._read_input_config().get(
+            "g_nhotaspinkyshiftmagnitude"
+        )
+        if configured is None:
+            return DEFAULT_SHIFT_MAGNITUDE
+        return max(configured, 0)
+
     @staticmethod
     def device_guid(device_name: str) -> str:
         """Create a stable UUID for key files, which do not store device GUIDs."""
@@ -212,6 +376,46 @@ class BMSKeyParser:
         except UnicodeDecodeError:
             text = data.decode("cp1252")
         return text.splitlines()
+
+    def _read_input_config(self) -> dict[str, int]:
+        """Read effective input settings, with the user cfg overriding the base."""
+
+        try:
+            config_paths = {
+                path.name.casefold(): path for path in self.config_dir.glob("*.cfg")
+            }
+        except OSError:
+            return {}
+
+        settings: dict[str, int] = {}
+        for file_name in ("falcon bms.cfg", "falcon bms user.cfg"):
+            path = config_paths.get(file_name)
+            if path is None:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8-sig", errors="replace")
+            except OSError:
+                continue
+            for line in text.splitlines():
+                match = _CONFIG_SETTING_RE.match(line)
+                if match:
+                    settings[match.group("name").casefold()] = int(
+                        match.group("value")
+                    )
+        return settings
+
+    def _format_command(self, binding: ParsedBinding, command: str) -> str:
+        if binding.control_kind == "button" and self.show_dx_button_numbers:
+            return self._prefix_identifier(f"DX{binding.control_id}", command)
+        if binding.control_kind == "hat" and self.show_pov_identifiers:
+            direction = _POV_DIRECTION_NAMES.get(binding.direction, "")
+            identifier = f"POV {binding.control_id} {direction}".rstrip()
+            return self._prefix_identifier(identifier, command)
+        return command
+
+    @staticmethod
+    def _prefix_identifier(identifier: str, command: str) -> str:
+        return f"{identifier} — {command}"
 
     @staticmethod
     def _build_label_catalog(lines: list[str]) -> dict[str, str]:
@@ -261,4 +465,3 @@ class BMSKeyParser:
             if binding.display_action not in actions:
                 actions.append(binding.display_action)
         return list(grouped.values())
-
