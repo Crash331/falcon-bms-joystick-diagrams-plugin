@@ -47,8 +47,8 @@ class FalconBMSSettingsTests(unittest.TestCase):
         self.assertFalse(settings.show_pov_identifiers)
         self.assertEqual("Auto", settings.button_layout)
 
-    def test_plugin_metadata_uses_single_v030_version_source(self):
-        self.assertEqual("0.3.0", __version__)
+    def test_plugin_metadata_uses_single_version_source(self):
+        self.assertEqual("0.3.1", __version__)
         self.assertEqual(__version__, ParserPlugin.plugin_meta.version)
         self.assertEqual("Falcon BMS", ParserPlugin.plugin_meta.name)
 

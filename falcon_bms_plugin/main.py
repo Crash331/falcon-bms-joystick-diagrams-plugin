@@ -1,5 +1,6 @@
 """Joystick Diagrams entry point for the Falcon BMS parser plugin."""
 
+import sys
 from pathlib import Path
 
 from pydantic import Field
@@ -8,8 +9,18 @@ from joystick_diagrams.input.profile_collection import ProfileCollection
 from joystick_diagrams.plugins.plugin_interface import PluginInterface
 from joystick_diagrams.plugins.plugin_settings import PluginMeta, PluginSettings
 
+# Joystick Diagrams validates an upgraded plugin in the same process that may
+# already have loaded the previous version. Its user-plugin loader replaces
+# ``main`` but leaves child modules cached, so explicitly discard our small
+# dependency chain before importing it from the newly installed directory.
+for _child_module in ("version", "bms_axis_parser", "bms_key_parser"):
+    sys.modules.pop(f"{__package__}.{_child_module}", None)
+
 from .version import __version__
-from .bms_key_parser import BMSKeyParser, BUTTON_LAYOUT_OPTIONS
+from .bms_key_parser import BMSKeyParser
+
+
+BUTTON_LAYOUT_OPTIONS = ("Auto", "128", "32")
 
 
 class FalconBMSSettings(PluginSettings):

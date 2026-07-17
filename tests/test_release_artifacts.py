@@ -1,5 +1,8 @@
 import hashlib
+import inspect
 from pathlib import Path
+import shutil
+import sys
 from tempfile import TemporaryDirectory
 import unittest
 from zipfile import ZipFile
@@ -16,7 +19,7 @@ V020_BACKUP = (
     / "v0.2.0"
     / "falcon_bms_plugin.zip"
 )
-V030_PACKAGE = REPOSITORY_ROOT / "dist" / "falcon_bms_plugin.zip"
+CURRENT_PACKAGE = REPOSITORY_ROOT / "dist" / "falcon_bms_plugin.zip"
 V020_SHA256 = "CFAD5E4C516B3279173F3FDFA70483C73D6483D6AD4D0FCC762DE88B02734514"
 
 PACKAGE_SOURCES = {
@@ -43,11 +46,11 @@ class ReleaseArtifactTests(unittest.TestCase):
             ).decode("utf-8")
         self.assertIn('__version__ = "0.2.0"', init_source)
 
-    def test_v030_package_has_current_sources_and_safe_structure(self):
-        self.assertTrue(V030_PACKAGE.is_file())
-        self.assertNotEqual(V020_SHA256, self._sha256(V030_PACKAGE))
+    def test_current_package_has_current_sources_and_safe_structure(self):
+        self.assertTrue(CURRENT_PACKAGE.is_file())
+        self.assertNotEqual(V020_SHA256, self._sha256(CURRENT_PACKAGE))
 
-        with ZipFile(V030_PACKAGE) as archive:
+        with ZipFile(CURRENT_PACKAGE) as archive:
             names = set(archive.namelist())
             self.assertEqual(set(PACKAGE_SOURCES), names)
             self.assertEqual(
@@ -76,14 +79,14 @@ class ReleaseArtifactTests(unittest.TestCase):
             main_source = archive.read("falcon_bms_plugin/main.py").decode(
                 "utf-8"
             )
-        self.assertIn('__version__ = "0.3.0"', version_source)
+        self.assertIn('__version__ = "0.3.1"', version_source)
         self.assertIn("from .version import __version__", main_source)
         self.assertIn("version=__version__", main_source)
 
-    def test_v030_package_extracts_and_loads_with_upstream_loader(self):
+    def test_current_package_extracts_and_loads_with_upstream_loader(self):
         with TemporaryDirectory() as temp_dir:
             install_root = Path(temp_dir)
-            with ZipFile(V030_PACKAGE) as archive:
+            with ZipFile(CURRENT_PACKAGE) as archive:
                 archive.extractall(install_root)
 
             installed = install_root / "falcon_bms_plugin"
@@ -91,7 +94,49 @@ class ReleaseArtifactTests(unittest.TestCase):
             plugin = module.ParserPlugin()
             self.assertIsInstance(plugin, PluginInterface)
             self.assertEqual("Falcon BMS", plugin.name)
-            self.assertEqual("0.3.0", plugin.version)
+            self.assertEqual("0.3.1", plugin.version)
+
+    def test_package_upgrades_from_v020_in_the_same_process(self):
+        module_prefix = "jd_user_parser_plugin_falcon_bms_plugin"
+        self._clear_loaded_plugin(module_prefix)
+        self.addCleanup(self._clear_loaded_plugin, module_prefix)
+
+        with TemporaryDirectory() as temp_dir:
+            install_root = Path(temp_dir)
+            with ZipFile(V020_BACKUP) as archive:
+                archive.extractall(install_root)
+
+            installed = install_root / "falcon_bms_plugin"
+            legacy_module = load_user_parser_plugin(installed)
+            self.assertEqual("0.2.0", legacy_module.ParserPlugin().version)
+
+            shutil.rmtree(installed)
+            with ZipFile(CURRENT_PACKAGE) as archive:
+                archive.extractall(install_root)
+
+            current_module = load_user_parser_plugin(installed)
+            plugin = current_module.ParserPlugin()
+            self.assertEqual("0.3.1", plugin.version)
+            self.assertIn(
+                "show_dx_button_numbers",
+                plugin.plugin_settings_model.model_fields,
+            )
+            self.assertIn(
+                "button_layout",
+                plugin.plugin_settings_model.model_fields,
+            )
+            self.assertIn(
+                "config_dir",
+                inspect.signature(current_module.BMSKeyParser).parameters,
+            )
+
+    @staticmethod
+    def _clear_loaded_plugin(module_prefix):
+        for module_name in list(sys.modules):
+            if module_name == module_prefix or module_name.startswith(
+                f"{module_prefix}."
+            ):
+                sys.modules.pop(module_name, None)
 
     @staticmethod
     def _sha256(path):

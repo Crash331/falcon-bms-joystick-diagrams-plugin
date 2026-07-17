@@ -1,5 +1,9 @@
 # Falcon BMS parser plugin for Joystick Diagrams
 
+Version 0.3.1 fixes upgrades from v0.2 in a running Joystick Diagrams session.
+The application can otherwise retain v0.2 parser modules while validating the
+new files, which caused a `BUTTON_LAYOUT_OPTIONS` import error in v0.3.0.
+
 This community parser imports Falcon BMS DirectInput button, POV, shifted, and
 analog-axis assignments, then exposes them as a Joystick Diagrams profile. It is
 hardware-independent and can work with any DirectInput HOTAS represented in the
