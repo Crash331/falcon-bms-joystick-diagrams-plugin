@@ -77,19 +77,6 @@ DX-shifted bindings use the separate `g_nHotasPinkyShiftMagnitude` setting.
 If it is absent, the BMS default of 256 is used. POV shifting continues to use
 BMS's separate two-POV offset.
 
-## Version 0.2 backup
-
-The exact v0.2.0 package is preserved both in
-[`dist/archive/v0.2.0/falcon_bms_plugin.zip`](dist/archive/v0.2.0/falcon_bms_plugin.zip)
-and in the
-[v0.2.0 GitHub release](https://github.com/Crash331/falcon-bms-joystick-diagrams-plugin/releases/tag/v0.2.0).
-
-SHA-256:
-
-```text
-CFAD5E4C516B3279173F3FDFA70483C73D6483D6AD4D0FCC762DE88B02734514
-```
-
 ## Development and verification
 
 The plugin targets the Joystick Diagrams 2.2 parser API and uses only Python's
