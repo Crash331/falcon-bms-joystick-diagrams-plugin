@@ -1,5 +1,10 @@
 # Falcon BMS parser plugin for Joystick Diagrams
 
+Version 0.3.2 keeps saved joystick, throttle, pedal, and controller profiles
+visible when the hardware is unplugged. It discovers device names and GUIDs
+generically from each user's `Setup.v*.xml` filenames; no hardware IDs are
+hardcoded.
+
 Version 0.3.1 fixes upgrades from v0.2 in a running Joystick Diagrams session.
 The application can otherwise retain v0.2 parser modules while validating the
 new files, which caused a `BUTTON_LAYOUT_OPTIONS` import error in v0.3.0.
@@ -50,10 +55,11 @@ changing an option.
 - Press/release pairs, combined on the same physical control.
 - Human-readable action labels from callback definitions in the key file.
 - Analog axis assignments from Alternative Launcher's per-device
-  `Setup.v*.xml` files, matched to active devices through
-  `DeviceSorting.txt`.
-- Stable, deterministic device UUIDs, because `.key` files do not contain USB
-  device GUIDs.
+  `Setup.v*.xml` files, including saved profiles for disconnected devices.
+  `DeviceSorting.txt` controls preferred order but is not an allow-list.
+- Real device GUIDs discovered from Setup filenames when available, allowing
+  templates and hidden-device settings to be shared with other parsers. A
+  stable deterministic UUID is used only for key-only devices.
 
 Keyboard shortcuts are intentionally excluded. Falcon BMS does not store analog
 axis assignments in the `.key` file, and its `axismapping.dat` is binary, so

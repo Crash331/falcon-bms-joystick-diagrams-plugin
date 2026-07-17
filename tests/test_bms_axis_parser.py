@@ -15,7 +15,7 @@ class BMSAxisParserTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_imports_axes_from_active_alternative_launcher_profiles(self):
+    def test_imports_axes_from_active_and_disconnected_saved_profiles(self):
         throttle_name = (
             "WINCTRL Orion Throttle Base II F15EX HANDLE L F15EX HANDLE R"
         )
@@ -58,11 +58,25 @@ class BMSAxisParserTests(unittest.TestCase):
         collection = BMSKeyParser(self.key_file).process_profiles()
         profile = collection.get_profile("Pilot")
         self.assertIsNotNone(profile)
-        self.assertEqual(2, len(profile.devices))
+        self.assertEqual(3, len(profile.devices))
 
         throttle = self._device(profile, throttle_name)
         stick = self._device(profile, stick_name)
+        disconnected = self._device(profile, "Disconnected Controller")
 
+        self.assertIs(
+            throttle,
+            profile.devices["11111111-1111-1111-1111-111111111111"],
+        )
+        self.assertIs(
+            stick,
+            profile.devices["22222222-2222-2222-2222-222222222222"],
+        )
+        self.assertIs(
+            disconnected,
+            profile.devices["33333333-3333-3333-3333-333333333333"],
+        )
+        self.assertEqual("Yaw", disconnected.inputs["axis"]["AXIS_X"].command)
         self.assertEqual("Radar Cursor X", throttle.inputs["axis"]["AXIS_X"].command)
         self.assertEqual("Radar Cursor Y", throttle.inputs["axis"]["AXIS_Y"].command)
         self.assertEqual("Throttle", throttle.inputs["axis"]["AXIS_RY"].command)
@@ -72,6 +86,67 @@ class BMSAxisParserTests(unittest.TestCase):
             "Radar Antenna Elevation",
             throttle.inputs["axis_slider"]["AXIS_SLIDER_2"].command,
         )
+
+    def test_saved_stick_and_throttle_remain_when_sorting_omits_them(self):
+        stick_name = "Saved Flight Stick"
+        throttle_name = "Saved Throttle"
+        stick_guid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        throttle_guid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        self.config_dir.joinpath("DeviceSorting.txt").write_text(
+            '{cccccccc-cccc-cccc-cccc-cccccccccccc} "Connected Gamepad"\n',
+            encoding="utf-8",
+        )
+        self._write_setup_profile(
+            self.config_dir,
+            stick_name,
+            stick_guid,
+            ["Roll", "Pitch", "", "", "", "", "", ""],
+        )
+        self._write_setup_profile(
+            self.config_dir,
+            throttle_name,
+            throttle_guid,
+            ["", "", "", "", "Throttle", "", "", ""],
+        )
+
+        profile = BMSKeyParser(self.key_file).process_profiles().get_profile("Pilot")
+        self.assertIsNotNone(profile)
+        self.assertEqual({stick_guid, throttle_guid}, set(profile.devices))
+        self.assertEqual(
+            "Roll",
+            profile.devices[stick_guid].inputs["axis"]["AXIS_X"].command,
+        )
+        self.assertEqual(
+            "Throttle",
+            profile.devices[throttle_guid].inputs["axis"]["AXIS_RY"].command,
+        )
+
+    def test_saved_callback_only_device_remains_but_empty_profile_is_skipped(self):
+        panel_name = "Saved Button Panel"
+        panel_guid = "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb"
+        empty_name = "Unused Empty Controller"
+        empty_guid = "cccccccc-1111-2222-3333-dddddddddddd"
+        self.config_dir.joinpath("DeviceSorting.txt").write_text(
+            '{eeeeeeee-1111-2222-3333-ffffffffffff} "Other Device"\n',
+            encoding="utf-8",
+        )
+        self.config_dir.joinpath(
+            f"Setup.v100.{panel_name} {{{panel_guid}}}.xml"
+        ).write_text(
+            "<JoyAssgn><button><ButAssgn><Callback>"
+            "<string>MappedCallback</string><string>SimDoNothing</string>"
+            "</Callback></ButAssgn></button></JoyAssgn>",
+            encoding="utf-8",
+        )
+        self.config_dir.joinpath(
+            f"Setup.v100.{empty_name} {{{empty_guid}}}.xml"
+        ).write_text("<JoyAssgn />", encoding="utf-8")
+
+        profile = BMSKeyParser(self.key_file).process_profiles().get_profile("Pilot")
+        self.assertIsNotNone(profile)
+        self.assertIn(panel_guid, profile.devices)
+        self.assertNotIn(empty_guid, profile.devices)
+        self.assertEqual(panel_name, profile.devices[panel_guid].name)
 
     def test_axis_identifier_option_prefixes_axes_and_sliders(self):
         device_name = "Test Throttle"

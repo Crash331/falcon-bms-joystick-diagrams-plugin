@@ -112,6 +112,7 @@ class BMSKeyParser:
         self.show_axis_identifiers = show_axis_identifiers
         self.show_pov_identifiers = show_pov_identifiers
         self.button_layout = button_layout
+        self._setup_device_guids = BMSAxisParser(self.config_dir).device_guids()
 
     def process_profiles(self) -> ProfileCollection:
         bindings = self.parse()
@@ -125,7 +126,8 @@ class BMSKeyParser:
             device = devices.get(binding.device_name)
             if device is None:
                 device = profile.add_device(
-                    self.device_guid(binding.device_name), binding.device_name
+                    self.resolve_device_guid(binding.device_name),
+                    binding.device_name,
                 )
                 devices[binding.device_name] = device
 
@@ -147,17 +149,32 @@ class BMSKeyParser:
                 )
                 device.add_modifier_to_input(control, {modifier}, command)
 
-        for binding in BMSAxisParser(self.config_dir).parse():
+        axis_parser = BMSAxisParser(self.config_dir)
+        for binding in axis_parser.parse():
             device = devices.get(binding.device_name)
             if device is None:
                 device = profile.add_device(
-                    self.device_guid(binding.device_name), binding.device_name
+                    self.resolve_device_guid(binding.device_name),
+                    binding.device_name,
                 )
                 devices[binding.device_name] = device
             action = binding.action
             if self.show_axis_identifiers:
                 action = self._prefix_identifier(binding.control.identifier, action)
             device.create_input(binding.control, action)
+
+        for setup_profile in axis_parser.setup_profiles():
+            if setup_profile.device_name in devices:
+                continue
+            if not axis_parser.has_assignments(setup_profile):
+                continue
+            device = profile.get_device(setup_profile.device_guid)
+            if device is None:
+                device = profile.add_device(
+                    setup_profile.device_guid,
+                    setup_profile.device_name,
+                )
+            devices[setup_profile.device_name] = device
 
         return collection
 
@@ -368,6 +385,23 @@ class BMSKeyParser:
         normalised_name = " ".join(device_name.split()).casefold()
         key = f"joystick-diagrams:falcon-bms:{normalised_name}"
         return str(uuid5(NAMESPACE_URL, key))
+
+    def resolve_device_guid(self, device_name: str) -> str:
+        """Use BMS's saved device GUID when available, with a stable fallback."""
+
+        key = self._normalise_device_name(device_name).casefold()
+        guid = self._setup_device_guids.get(key)
+        if guid is None:
+            prefix_matches = {
+                candidate_guid
+                for candidate_name, candidate_guid in (
+                    self._setup_device_guids.items()
+                )
+                if candidate_name.startswith(key) or key.startswith(candidate_name)
+            }
+            if len(prefix_matches) == 1:
+                guid = prefix_matches.pop()
+        return guid or self.device_guid(device_name)
 
     def _read_lines(self) -> list[str]:
         data = self.key_file.read_bytes()

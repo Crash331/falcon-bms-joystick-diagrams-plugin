@@ -79,7 +79,7 @@ class ReleaseArtifactTests(unittest.TestCase):
             main_source = archive.read("falcon_bms_plugin/main.py").decode(
                 "utf-8"
             )
-        self.assertIn('__version__ = "0.3.1"', version_source)
+        self.assertIn('__version__ = "0.3.2"', version_source)
         self.assertIn("from .version import __version__", main_source)
         self.assertIn("version=__version__", main_source)
 
@@ -94,7 +94,7 @@ class ReleaseArtifactTests(unittest.TestCase):
             plugin = module.ParserPlugin()
             self.assertIsInstance(plugin, PluginInterface)
             self.assertEqual("Falcon BMS", plugin.name)
-            self.assertEqual("0.3.1", plugin.version)
+            self.assertEqual("0.3.2", plugin.version)
 
     def test_package_upgrades_from_v020_in_the_same_process(self):
         module_prefix = "jd_user_parser_plugin_falcon_bms_plugin"
@@ -116,7 +116,7 @@ class ReleaseArtifactTests(unittest.TestCase):
 
             current_module = load_user_parser_plugin(installed)
             plugin = current_module.ParserPlugin()
-            self.assertEqual("0.3.1", plugin.version)
+            self.assertEqual("0.3.2", plugin.version)
             self.assertIn(
                 "show_dx_button_numbers",
                 plugin.plugin_settings_model.model_fields,

@@ -255,6 +255,24 @@ ShiftB 287 -1 -2 0 0x0 0 "Shift B"
                 device.inputs["hats"][f"POV_1_{direction_key}"].command,
             )
 
+    def test_button_device_reuses_guid_from_generic_setup_profile(self):
+        device_name = "Generic Flight Stick"
+        device_guid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        self.key_file.write_text(
+            f"#======== {device_name} ========\n"
+            'Action 1 -1 -2 0 0x0 0 "Mapped Action"\n',
+            encoding="utf-8",
+        )
+        self.config_dir.joinpath(
+            f"Setup.v100.{device_name} {{{device_guid}}}.xml"
+        ).write_text("<JoyAssgn />", encoding="utf-8")
+
+        profile = BMSKeyParser(self.key_file).process_profiles().get_profile("Pilot")
+        self.assertIsNotNone(profile)
+        self.assertIn(device_guid, profile.devices)
+        self.assertEqual(device_name, profile.devices[device_guid].name)
+        self.assertIn("BUTTON_2", profile.devices[device_guid].inputs["buttons"])
+
     def test_device_guid_is_stable_and_case_insensitive(self):
         first = BMSKeyParser.device_guid("WINCTRL Orion Throttle")
         second = BMSKeyParser.device_guid("winctrl orion throttle")
